@@ -241,23 +241,6 @@ if __name__ == "__main__":
     # }
     # 为演示，我们创建模拟数据
     all_stocks_data = {}
-#    for stock in index_components['CSI300'] + index_components['CSI500']:
-#        n_days = 200
-#        close = 10 * np.cumprod(1 + np.random.normal(0, 0.02, n_days))
-#        df = pd.DataFrame({
-#            'open': close * (1 + np.random.normal(0, 0.005, n_days)),
-#            'high': close * (1 + np.abs(np.random.normal(0, 0.01, n_days))),
-#            'low': close * (1 - np.abs(np.random.normal(0, 0.01, n_days))),
-#            'close': close,
-#            'volume': np.random.randint(1e6, 1e8, n_days),
-#            'turnover': np.random.uniform(0.5, 5.0, n_days),
-#            'peTTM': np.random.uniform(10, 50, n_days),
-#            'psTTM': np.random.uniform(1, 10, n_days),
-#            'pcfNcfTTM': np.random.uniform(5, 30, n_days),
-#            'pbMRQ': np.random.uniform(0.8, 5.0, n_days),
-#            'roe': np.random.uniform(0.05, 0.25, n_days)
-#        }, index=pd.date_range(end='2026-04-11', periods=n_days, freq='D'))
-#        all_stocks_data[stock] = df
 
     calendar = get_trading_days(start_date='2020-01-01', end_date=today)
     df_trading_days = calendar[calendar['calendar_date'] >= "2020-01-01"].copy()
@@ -283,7 +266,13 @@ if __name__ == "__main__":
     )
     
     # --- 3. 执行筛选 (假设今天是2026-04-11，为下周选股) ---
-    target_date = '2026-02-27'
+    target_date = '2026-04-11'
+    while calendar.loc[calendar['calendar_date'] == target_date]['is_trading_day'].iloc[0] != "1":
+        print(f"⚠️  {target_date} 不是交易日")
+        p = datetime.strptime(target_date, "%Y-%m-%d")
+        target_date = p - timedelta(days=1)
+        target_date = target_date.strftime("%Y-%m-%d")
+
     top_picks = screener.screen(all_stocks_data, target_date)
     
     # --- 4. 输出结果 ---

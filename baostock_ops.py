@@ -4,6 +4,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from concurrent.futures import ThreadPoolExecutor
+
 class BaostockOps:
     index_mapping = {
         "hs300": "sh.000300",
@@ -155,17 +157,26 @@ class BaostockOps:
             stock_list = stock_list + stocks
 
         exisiting_stocks = self.total_dataset['code'].unique().tolist()
+
+        last_day_list = []              #datetime.strftime(last_day,"%Y-%m-%d")
+        today_str = datetime.strftime(today,"%Y-%m-%d")
+        today_list = [today_str] * len(stock_list)
+
         for code in stock_list:
-            # 更新股票数据
             # 如果该股票代码没有数据，则下载该股票代码从very_beginning开始的数据
-            last_day_str = datetime.strftime(last_day,"%Y-%m-%d")
-            today_str = datetime.strftime(today,'%Y-%m-%d')
 
             if code not in exisiting_stocks:
-                last_day_str = self.very_beginning
+                last_day_list.append(self.very_beginning)
+            else:
+                last_day_list.append(datetime.strftime(last_day,"%Y-%m-%d"))
 
-            df = self._fetch_stocks(code, last_day_str, today_str)
-            self.total_dataset = pd.concat([self.total_dataset, df], axis=0).drop_duplicates()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+        # map 会自动并发执行，结果按顺序返回
+            results = list(executor.map(self._fetch_stocks, stock_list, last_day_list, today_list))
+            
+            # df = self._fetch_stocks(code, last_day_str, today_str)
+        for d in results:
+            self.total_dataset = pd.concat([self.total_dataset, d], axis=0).drop_duplicates()
         
         self.save_parquet(self.total_dataset)
 

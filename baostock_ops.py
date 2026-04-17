@@ -1,10 +1,8 @@
 import baostock as bs
 import pandas as pd
 
-from datetime import datetime, timedelta
+from datetime import datetime 
 from pathlib import Path
-
-from concurrent.futures import ThreadPoolExecutor
 
 class BaostockOps:
     index_mapping = {
@@ -30,8 +28,6 @@ class BaostockOps:
             self.total_dataset = pd.concat(dfs, ignore_index=True)
         else:
             raise FileNotFoundError(f"No parquet files matching 'total_*.parquet' found in {self.base_dir} or its subdirectories")
-
-        # self.total_dataset.set_index('date', inplace=True)
 
     def _convert_to_float(self, df:pd.DataFrame)->pd.DataFrame:
         df = df.mask(df == "", 0)
@@ -71,9 +67,6 @@ class BaostockOps:
             df.reset_index(drop=True, inplace=True)
 
             df.sort_values(by=['date'], ascending=True, inplace=True)
-
-            # print(f"{code}  ohlcv data from {start_date} to {df.iloc[-1]['date']}")
-            # df.to_csv(self.working_dir / f"{code}.csv", index=False)
 
         else:
             print(f"no new ohlcv data for {code}")
@@ -137,8 +130,6 @@ class BaostockOps:
                 
     def update_dataset(self )->None:
 
-        # stock_list = self.update_stock_list(stock_pool)
-
         entry = bs.login()          #一次登录，取多条数据
         if entry.error_code != '0':
             print(entry.error_msg)
@@ -166,7 +157,6 @@ class BaostockOps:
         for code in stock_list:
             # 如果该股票代码没有数据，则下载该股票代码从very_beginning开始的数据
 
-            # results = pd.read_csv(self.working_dir / f"{code}.csv")
             if code not in exisiting_stocks:
                 last_day_str = self.very_beginning
             else:
@@ -180,13 +170,7 @@ class BaostockOps:
         if dataframes_to_concat:  # 确保有数据才进行合并
             new_data = pd.concat(dataframes_to_concat, axis=0, ignore_index=True)
             self.total_dataset = pd.concat([self.total_dataset, new_data], axis=0, ignore_index=True).drop_duplicates()
-#
-#        with ThreadPoolExecutor(max_workers=1) as executor:
-#        # map 会自动并发执行，结果按顺序返回
-#            results = list(executor.map(self._fetch_stocks, stock_list, last_day_list, today_list))
-#            
-            # df = self._fetch_stocks(code, last_day_str, today_str)
-        # for d in results:
+
         
         self.save_parquet(self.total_dataset)
 
@@ -196,7 +180,8 @@ class BaostockOps:
         today = datetime.now()
         # last_year = today.year - 1
         end_date = today.strftime("%Y-%m-%d")
-        start_date = "2020-01-01"
+        start_date = self.very_beginning
+
 #        self.index_mapping = {
 #            "上证指数": "sh.000001",
 #            "深证成指": "sz.399001",
@@ -213,7 +198,7 @@ class BaostockOps:
         for name, code in self.index_mapping.items():
             df  = self._fetch_index(code,start_date,end_date)
             # print(df.head())
-            df.to_csv(self.working_dir / f"{code}.csv", index=False)
+            df.to_csv(self.base_dir / f"{code}.csv", index=False)
         bs.logout()
     def load_calendar(self, end_date:str=""):
         # 登录
@@ -273,3 +258,4 @@ class BaostockOps:
 if __name__ == "__main__":
     ops = BaostockOps()
     ops.update_dataset()
+    ops.update_index()

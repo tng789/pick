@@ -1,7 +1,7 @@
 import baostock as bs
 import pandas as pd
 
-from datetime import datetime 
+from datetime import datetime , timedelta
 from pathlib import Path
 
 class BaostockOps:
@@ -10,9 +10,10 @@ class BaostockOps:
         "zz500": "sh.000905",
         "zz1000": "sh.000852"
     }
-    def __init__(self, working_dir="working", base_dir="local"):
-        self.working_dir = Path(working_dir)
-        self.base_dir = Path(base_dir)
+    def __init__(self, home="/home/free/pick"):
+        self.home = Path(home)
+        self.working_dir = self.home / "working"
+        self.base_dir = self.home / "local"
         self.very_beginning = "2020-01-01"
         self.calendar = self.load_calendar()
 
@@ -75,7 +76,7 @@ class BaostockOps:
 
     def _fetch_index(self, code:str, start_date:str, end_date:str, freq = 'd')->pd.DataFrame:
 
-        cols = ",".join(['date', 'code', 'open', 'high', 'low', 'close', 'volume'])
+        cols = ",".join(['date', 'code', 'open', 'high', 'low', 'close', 'volume', 'pctChg'])
         empty_df = pd.DataFrame()
 
         rs = bs.query_history_k_data_plus(          # 指数， 与股票不同
@@ -128,7 +129,7 @@ class BaostockOps:
                 group.to_parquet(output_file)
                 print(f"Saved {output_file} with {len(group)} rows")
                 
-    def update_dataset(self )->None:
+    def update_dataset(self, refresh:bool=False )->None:
 
         entry = bs.login()          #一次登录，取多条数据
         if entry.error_code != '0':
@@ -138,14 +139,20 @@ class BaostockOps:
 
         today = datetime.now()
         today_str = datetime.strftime(today,'%Y-%m-%d')
-        last_day = self.total_dataset['date'].max()
+        
+        if refresh:                         # 刷新，从2020-01-01开始
+            last_day_str = self.very_beginning
+        else:
+            last_day = self.total_dataset['date'].max()
+            last_day_str = datetime.strftime(last_day,'%Y-%m-%d')
+        
         if last_day >= today:
             print(f"库中最后一天是 {datetime.strftime(last_day,'%Y-%m-%d')}, 无需更新")
             return
             
         # 从csi300,csi500,csi1000等三个文件中读取股票代码列表，按照股票代码从baostock下载数据，并保存在parquet文件中。
         stock_list = []
-        for stock_list_file in ("csi300_list.csv", "csi500_list.csv", "csi1000_list.csv"):
+        for stock_list_file in (self.home / "csi300_list.csv", self.home / "csi500_list.csv", self.home / "csi1000_list.csv"):
             df = pd.read_csv(stock_list_file)
             stocks = df['code'].tolist()
             stock_list = stock_list + stocks
@@ -171,7 +178,6 @@ class BaostockOps:
             new_data = pd.concat(dataframes_to_concat, axis=0, ignore_index=True)
             self.total_dataset = pd.concat([self.total_dataset, new_data], axis=0, ignore_index=True).drop_duplicates()
 
-        
         self.save_parquet(self.total_dataset)
 
         bs.logout()
@@ -253,9 +259,29 @@ class BaostockOps:
         trading = self.calendar.loc[self.calendar['calendar_date']==day]['is_trading_day']
         return trading.all() == 1
     
+def last_day_today(day:datetime):
+       # 计算明天的日期
+    tomorrow = day + timedelta(days=1)
+    
+    # 如果明天的月份与今天不同，则今天是本月最后一天
+    return tomorrow.month != day.month
 
 #for testing
 if __name__ == "__main__":
     ops = BaostockOps()
-    ops.update_dataset()
-    ops.update_index()
+    today = datetime.now()
+    today_str = datetime.strftime(today,'%Y-%m-%d')
+    # 判断今天是不是每月的最后一天，如是，则更新dataset和index，且初始日期为2020-01-01,截止日期为今天。
+    # 如果不是每月最后一天，再判断今天是否交易日，如是，则update dataset 和 index，初始日期为parquet文件中的最后一天(默认)，截止日期为今天。
+    # 如果不是交易日，则不更新。
+    #
+    if last_day_today(today):
+        print(f"{today_str} 是本月最后一日，更新全部数据")
+        ops.update_dataset(refresh = True)
+        ops.update_index()
+    elif ops.is_trading_day(today_str):
+        ops.update_dataset()
+        ops.update_index()
+    else:
+        print(f"{today_str} 不是交易日，不更新数据")
+        # pass

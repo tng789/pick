@@ -72,7 +72,9 @@ class BaostockOps:
 
             df.sort_values(by=['date'], ascending=True, inplace=True)
 
-            print(f"the last date of {code} ohlcv: {df.iloc[-1]['date']}")
+            # print(f"{code}  ohlcv data from {start_date} to {df.iloc[-1]['date']}")
+            # df.to_csv(self.working_dir / f"{code}.csv", index=False)
+
         else:
             print(f"no new ohlcv data for {code}")
 
@@ -144,6 +146,7 @@ class BaostockOps:
             return
 
         today = datetime.now()
+        today_str = datetime.strftime(today,'%Y-%m-%d')
         last_day = self.total_dataset['date'].max()
         if last_day >= today:
             print(f"库中最后一天是 {datetime.strftime(last_day,'%Y-%m-%d')}, 无需更新")
@@ -158,25 +161,32 @@ class BaostockOps:
 
         exisiting_stocks = self.total_dataset['code'].unique().tolist()
 
-        last_day_list = []              #datetime.strftime(last_day,"%Y-%m-%d")
-        today_str = datetime.strftime(today,"%Y-%m-%d")
-        today_list = [today_str] * len(stock_list)
-
+        # 收集所有待合并的dataframes，然后一次性合并
+        dataframes_to_concat = []
         for code in stock_list:
             # 如果该股票代码没有数据，则下载该股票代码从very_beginning开始的数据
 
+            # results = pd.read_csv(self.working_dir / f"{code}.csv")
             if code not in exisiting_stocks:
-                last_day_list.append(self.very_beginning)
+                last_day_str = self.very_beginning
             else:
-                last_day_list.append(datetime.strftime(last_day,"%Y-%m-%d"))
+                last_day_str = datetime.strftime(last_day,"%Y-%m-%d")
 
-        with ThreadPoolExecutor(max_workers=1) as executor:
-        # map 会自动并发执行，结果按顺序返回
-            results = list(executor.map(self._fetch_stocks, stock_list, last_day_list, today_list))
-            
+            results = self._fetch_stocks(code, last_day_str, today_str)
+            dataframes_to_concat.append(results)
+            print(f"{code}  ohlcv data read")#  from {last_day} to {datetime.strftime(today,'%Y-%m-%d')} pulled")
+
+        # 一次性合并所有数据框，然后进行去重
+        if dataframes_to_concat:  # 确保有数据才进行合并
+            new_data = pd.concat(dataframes_to_concat, axis=0, ignore_index=True)
+            self.total_dataset = pd.concat([self.total_dataset, new_data], axis=0, ignore_index=True).drop_duplicates()
+#
+#        with ThreadPoolExecutor(max_workers=1) as executor:
+#        # map 会自动并发执行，结果按顺序返回
+#            results = list(executor.map(self._fetch_stocks, stock_list, last_day_list, today_list))
+#            
             # df = self._fetch_stocks(code, last_day_str, today_str)
-        for d in results:
-            self.total_dataset = pd.concat([self.total_dataset, d], axis=0).drop_duplicates()
+        # for d in results:
         
         self.save_parquet(self.total_dataset)
 

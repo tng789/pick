@@ -176,6 +176,8 @@ class EasyProfitScreener:
                 if stock not in all_stocks_data:
                     continue
                 df = all_stocks_data[stock]
+                df.reset_index(inplace=True)
+                df.set_index('date', inplace=True)
                 if target_date not in df.index:
                     continue
                 
@@ -224,6 +226,20 @@ if __name__ == "__main__":
 
     ops = BaostockOps(home="./")
 
+    target_date = datetime.now().strftime('%Y-%m-%d')
+    # ---  执行筛选 (假设今天是2026-04-11，为下周选股) ---
+    # 如果当天不是交易日，则往前退，直到是交易日为止。
+    while not ops.is_trading_day(target_date): 
+        print(f"⚠️  {target_date} 不是交易日")
+        p = datetime.strptime(target_date, "%Y-%m-%d")
+        target_date = p - timedelta(days=1)
+        target_date = target_date.strftime("%Y-%m-%d")
+
+    latest_data_date = max(ops.total_dataset['date'])
+    if target_date > datetime.strftime(latest_data_date,"%Y-%m-%d"):
+        print(f"⚠️  {target_date} 数据未更新，最新数据截止至 {latest_data_date}，请等待数据更新")
+        exit()
+
     csi300_list = pd.read_csv('csi300_list.csv')['code'].tolist()
     csi500_list = pd.read_csv('csi500_list.csv')['code'].tolist()
     csi1000_list = pd.read_csv('csi1000_list.csv')['code'].tolist()
@@ -240,10 +256,6 @@ if __name__ == "__main__":
     csi500 = pd.read_csv(base_dir / f"{mapping['CSI500']}.csv", index_col='date', parse_dates=True)
     csi1000 = pd.read_csv(base_dir / f"{mapping['CSI1000']}.csv", index_col='date', parse_dates=True)
     
-    # benchmark_returns_csi300 = csi300['pctChg']
-    # benchmark_returns_csi500 = csi500['pctChg']
-    # benchmark_returns_csi1000 = csi1000['pctChg']
-
     # 示例：指数成分股
     index_components = {
         'CSI300': (csi300_list, csi300['pctChg']),          #['000001.SZ', '600000.SH', '601318.SH', ...],  # 你的沪深300成分股列表
@@ -251,31 +263,26 @@ if __name__ == "__main__":
         'CSI1000': (csi1000_list, csi1000['pctChg'])           #['002475.SZ', '300750.SZ', '688981.SH', ...]   # 你的中证1000成分股列表
     }
     
-    today = datetime.now().strftime('%Y-%m-%d')
 
-    # 示例：指数日收益率 (你需要计算)
-    # benchmark_returns = pd.read_csv('csi300_daily_return.csv', index_col='date', parse_dates=True)['return']
-    # 假设我们有一个包含所有日期的Series
-    dates = pd.date_range(start='2020-01-01', end=today, freq='D')
+#    # 示例：指数日收益率 (你需要计算)
+#    # 假设我们有一个包含所有日期的Series
+#    dates = pd.date_range(start='2020-01-01', end=today, freq='D')
+#    
+#
+#    calendar = ops.calendar.copy()
+#    #把calendar的is_trading_day列设置为bool型
+#    calendar['is_trading_day'] = calendar['is_trading_day'].astype(bool)
+#    
+#    df_trading_days = calendar[calendar['calendar_date'] >= "2020-01-01"].copy()
+#
+#    d = df_trading_days.loc[df_trading_days['is_trading_day']]['calendar_date']
+#    
+#    all_trading_days = pd.to_datetime(d).sort_values().unique()
     
-    
-    # 示例：所有股票的日线数据
-    # all_stocks_data = {
-    #     '000001.SZ': pd.read_csv('000001.csv', index_col='date', parse_dates=True),
-    #     '600000.SH': pd.read_csv('600000.csv', index_col='date', parse_dates=True),
-    #     ...
-    # }
+    # n_days = 200
+
+    print(f" {target_date} 读取数据...")
     all_stocks_data = {}
-
-    calendar = ops.calendar.copy()
-
-    df_trading_days = calendar[calendar['calendar_date'] >= "2020-01-01"].copy()
-
-    d = df_trading_days.loc[df_trading_days['is_trading_day']==1]['calendar_date']
-    
-    all_trading_days = pd.to_datetime(d).sort_values().unique()
-    
-    n_days = 200
     for stock in index_components['CSI300'][0] + index_components['CSI500'][0] + index_components['CSI1000'][0]:
         
         #从ops.total_dataset，取出code列为stock的所有行，组成一个DataFrame
@@ -288,12 +295,12 @@ if __name__ == "__main__":
 
 
         # 这里要做填充，把停牌等非交易的日期填充为前一个交易日的收盘价，参照交易所日历
-        df_aligned = align_stock_to_calendar(df, all_trading_days)
+        # df_aligned = align_stock_to_calendar(df, all_trading_days)
         
         # 从df_aligned中取最后200行数据
-        df_aligned = df_aligned.tail(n_days)
+        # df_aligned = df_aligned.tail(n_days)
 
-        all_stocks_data[stock] = df_aligned
+        all_stocks_data[stock] = df
     
     # --- 2. 初始化筛选器 ---
     screener = EasyProfitScreener(
@@ -303,15 +310,7 @@ if __name__ == "__main__":
         top_n=10
     )
     
-    # --- 3. 执行筛选 (假设今天是2026-04-11，为下周选股) ---
-    target_date = "2026-04-10"
-    # 如果当天不是交易日，则往前退，直到是交易日为止。
-    while not ops.is_trading_day(target_date): 
-        print(f"⚠️  {target_date} 不是交易日")
-        p = datetime.strptime(target_date, "%Y-%m-%d")
-        target_date = p - timedelta(days=1)
-        target_date = target_date.strftime("%Y-%m-%d")
-
+        
     print(f" {target_date} 筛选开始...")
     top_picks = screener.screen(all_stocks_data, target_date)
     

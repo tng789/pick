@@ -146,7 +146,7 @@ class BaostockOps:
             last_day = self.total_dataset['date'].max()
             last_day_str = datetime.strftime(last_day,'%Y-%m-%d')
         
-        if last_day >= today:
+        if last_day_str >= today_str:
             print(f"库中最后一天是 {datetime.strftime(last_day,'%Y-%m-%d')}, 无需更新")
             return
             
@@ -167,6 +167,7 @@ class BaostockOps:
             if code not in exisiting_stocks:
                 last_day_str = self.very_beginning
             else:
+                last_day = self.total_dataset['date'].max()
                 last_day_str = datetime.strftime(last_day,"%Y-%m-%d")
 
             results = self._fetch_stocks(code, last_day_str, today_str)

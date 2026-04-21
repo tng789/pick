@@ -10,7 +10,7 @@ class BaostockOps:
         "zz500": "sh.000905",
         "zz1000": "sh.000852"
     }
-    def __init__(self, home="/home/free/pick"):
+    def __init__(self, home=Path(".").resolve()):
         self.home = Path(home)
         self.working_dir = self.home / "working"
         self.base_dir = self.home / "local"
@@ -30,6 +30,7 @@ class BaostockOps:
         else:
             raise FileNotFoundError(f"No parquet files matching 'total_*.parquet' found in {self.base_dir} or its subdirectories")
 
+        self.total_dataset = self.total_dataset.set_index('date')
     def _convert_to_float(self, df:pd.DataFrame)->pd.DataFrame:
         df = df.mask(df == "", 0)
         for col in df.columns:
@@ -239,6 +240,7 @@ class BaostockOps:
         else:
             df_calendar = get_trading_days(start_date, end_date)
 
+        df_calendar['calendar_date'] = pd.to_datetime(df_calendar['calendar_date'])
         df_calendar.to_csv(calendar, index=False)
         return df_calendar
 

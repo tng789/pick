@@ -164,6 +164,8 @@ class EasyProfitScreener:
         :return: dict, {'CSI300': [top stocks], 'CSI500': [top stocks]}
         """
         results = {}
+
+        target_date  = pd.to_datetime(target_date)
         
         for index_name, (stock_list, benchmark_returns) in self.index_components.items():
             print(f"\n🔍 正在处理 {index_name} 股票池...")
@@ -173,16 +175,12 @@ class EasyProfitScreener:
             valid_stocks = []
             
             for stock in stock_list:
-                if stock not in all_stocks_data:
-                    continue
+                # if stock not in all_stocks_data:
+                    # continue
                 df = all_stocks_data[stock]
-                df.reset_index(inplace=True)
-                df.set_index('date', inplace=True)
-                if target_date not in df.index:
-                    continue
-                
-                # 获取截至 target_date 的数据
-                df_until = df.loc[:target_date]
+
+                df_until = df[df.index <= target_date]
+
                 if len(df_until) < self.lookback_days:
                     continue
                 
@@ -209,11 +207,11 @@ class EasyProfitScreener:
             
             # 选出Top N
             top_stocks = zscore_df.nlargest(self.top_n, 'composite_score')
-            results[index_name] = top_stocks.index.tolist()
+            # 修改结果存储方式，保存(stock, score)元组
+            results[index_name] = [(stock, zscore_df.loc[stock, 'composite_score']) for stock in top_stocks.index]
             
             print(f"  ✅ {index_name} Top {self.top_n}:")
-            for i, stock in enumerate(results[index_name], 1):
-                score = zscore_df.loc[stock, 'composite_score']
+            for i, (stock, score) in enumerate(results[index_name], 1):
                 print(f"    {i}. {stock} (Score: {score:.4f})")
         
         return results
@@ -227,18 +225,10 @@ if __name__ == "__main__":
     ops = BaostockOps(home="./")
 
     target_date = datetime.now().strftime('%Y-%m-%d')
-    # ---  执行筛选 (假设今天是2026-04-11，为下周选股) ---
-    # 如果当天不是交易日，则往前退，直到是交易日为止。
-    while not ops.is_trading_day(target_date): 
-        print(f"⚠️  {target_date} 不是交易日")
-        p = datetime.strptime(target_date, "%Y-%m-%d")
-        target_date = p - timedelta(days=1)
-        target_date = target_date.strftime("%Y-%m-%d")
 
-    latest_data_date = max(ops.total_dataset['date'])
-    if target_date > datetime.strftime(latest_data_date,"%Y-%m-%d"):
-        print(f"⚠️  {target_date} 数据未更新，最新数据截止至 {latest_data_date}，请等待数据更新")
-        exit()
+    # 获取最新数据日期
+    latest_data_date = ops.total_dataset.index.max()
+    target_date = min(target_date, datetime.strftime(latest_data_date,"%Y-%m-%d"))
 
     csi300_list = pd.read_csv('csi300_list.csv')['code'].tolist()
     csi500_list = pd.read_csv('csi500_list.csv')['code'].tolist()
@@ -264,44 +254,6 @@ if __name__ == "__main__":
     }
     
 
-#    # 示例：指数日收益率 (你需要计算)
-#    # 假设我们有一个包含所有日期的Series
-#    dates = pd.date_range(start='2020-01-01', end=today, freq='D')
-#    
-#
-#    calendar = ops.calendar.copy()
-#    #把calendar的is_trading_day列设置为bool型
-#    calendar['is_trading_day'] = calendar['is_trading_day'].astype(bool)
-#    
-#    df_trading_days = calendar[calendar['calendar_date'] >= "2020-01-01"].copy()
-#
-#    d = df_trading_days.loc[df_trading_days['is_trading_day']]['calendar_date']
-#    
-#    all_trading_days = pd.to_datetime(d).sort_values().unique()
-    
-    # n_days = 200
-
-    print(f" {target_date} 读取数据...")
-    all_stocks_data = {}
-    for stock in index_components['CSI300'][0] + index_components['CSI500'][0] + index_components['CSI1000'][0]:
-        
-        #从ops.total_dataset，取出code列为stock的所有行，组成一个DataFrame
-        df = ops.total_dataset[ops.total_dataset['code']==stock]
-        df.reset_index(inplace=True) 
-        
-        # 设置日期列为索引并转换为datetime格式
-        # df['date'] = pd.to_datetime(df['date'])
-        # df.set_index('date', inplace=True)
-
-
-        # 这里要做填充，把停牌等非交易的日期填充为前一个交易日的收盘价，参照交易所日历
-        # df_aligned = align_stock_to_calendar(df, all_trading_days)
-        
-        # 从df_aligned中取最后200行数据
-        # df_aligned = df_aligned.tail(n_days)
-
-        all_stocks_data[stock] = df
-    
     # --- 2. 初始化筛选器 ---
     screener = EasyProfitScreener(
         index_components=index_components,
@@ -310,9 +262,30 @@ if __name__ == "__main__":
         top_n=10
     )
     
+    print(f"读取截至 {target_date} 的数据...")
+
+    # 获取所有要查询的股票代码
+    all_stocks_list = index_components['CSI300'][0] + index_components['CSI500'][0] + index_components['CSI1000'][0]
+    
+    # 使用向量化操作一次性过滤所有需要的股票数据
+    mask = ops.total_dataset['code'].isin(all_stocks_list)
+    filtered_data = ops.total_dataset[mask]
+    
+    # 按股票代码分组，创建字典
+    all_stocks_data = {}
+    for stock_code, group in filtered_data.groupby('code'):
+        df = group.copy()
         
+        # 注意：total_dataset已经将date设为索引，所以这里不再重复设置或重置
+        # 确保索引是 DatetimeIndex 以符合后续计算因子的要求
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+            
+        all_stocks_data[stock_code] = df
+    
     print(f" {target_date} 筛选开始...")
-    top_picks = screener.screen(all_stocks_data, target_date)
+
+    top_picks = screener.screen(all_stocks_data, pd.to_datetime(target_date))
     
     # --- 4. 输出结果 ---
     print("\n" + "="*50)
@@ -320,5 +293,9 @@ if __name__ == "__main__":
     print("="*50)
     for index, stocks in top_picks.items():
         print(f"\n{index} Top 10:")
-        for stock in stocks:
-            print(f"  - {stock}")
+        for stock_tuple in stocks:
+            if isinstance(stock_tuple, tuple):  # 如果是(stock, score)元组
+                stock, score = stock_tuple
+                print(f"  - {stock} (Score: {score:.4f})")
+            else:  # 兼容旧的数据结构
+                print(f"  - {stock_tuple}")

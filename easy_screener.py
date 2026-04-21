@@ -210,9 +210,9 @@ class EasyProfitScreener:
             # 修改结果存储方式，保存(stock, score)元组
             results[index_name] = [(stock, zscore_df.loc[stock, 'composite_score']) for stock in top_stocks.index]
             
-            print(f"  ✅ {index_name} Top {self.top_n}:")
-            for i, (stock, score) in enumerate(results[index_name], 1):
-                print(f"    {i}. {stock} (Score: {score:.4f})")
+#            print(f"  ✅ {index_name} Top {self.top_n}:")
+#            for i, (stock, score) in enumerate(results[index_name], 1):
+#                print(f"    {i}. {stock} (Score: {score:.4f})")
         
         return results
 
@@ -299,3 +299,37 @@ if __name__ == "__main__":
                 print(f"  - {stock} (Score: {score:.4f})")
             else:  # 兼容旧的数据结构
                 print(f"  - {stock_tuple}")
+    
+    # --- 5. 保存结果到CSV文件 ---
+    import csv
+    # from pathlib import Path
+    
+    # 创建要保存的数据列表
+    csv_rows = []
+    for index, stocks in top_picks.items():
+        for stock_tuple in stocks:
+            if isinstance(stock_tuple, tuple):
+                stock, score = stock_tuple
+                csv_rows.append({
+                    'date': target_date,
+                    'index': index,
+                    'code': stock,
+                    'composite_score': score
+                })
+    
+    # 按日期降序排列（新日期在上面）
+    csv_rows = sorted(csv_rows, key=lambda x: x['date'], reverse=True)
+    
+    # 定义文件路径
+    csv_file_path = ops.base_dir / "picks.csv"
+    
+    # 写入CSV文件
+    with open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['date', 'index', 'code', 'composite_score']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        for row in csv_rows:
+            writer.writerow(row)
+    
+    print(f"\n💾 结果已保存到: {csv_file_path}")

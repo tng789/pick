@@ -144,7 +144,7 @@ class BaostockOps:
         if refresh:                         # 刷新，从2020-01-01开始
             last_day_str = self.very_beginning
         else:
-            last_day = self.total_dataset['date'].max()
+            last_day = self.total_dataset.index.max()
             last_day_str = datetime.strftime(last_day,'%Y-%m-%d')
         
         if last_day_str >= today_str:
@@ -168,7 +168,7 @@ class BaostockOps:
             if code not in exisiting_stocks:
                 last_day_str = self.very_beginning
             else:
-                last_day = self.total_dataset['date'].max()
+                last_day = self.total_dataset.index.max()
                 last_day_str = datetime.strftime(last_day,"%Y-%m-%d")
 
             results = self._fetch_stocks(code, last_day_str, today_str)

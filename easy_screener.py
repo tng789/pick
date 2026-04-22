@@ -216,6 +216,54 @@ class EasyProfitScreener:
         
         return results
 
+    # --- 5. 保存结果到CSV文件 ---
+def save_results(folder, top_picks, target_date):
+    # 创建要保存的数据列表
+    csv_rows = []
+    for index, stocks in top_picks.items():
+        for stock_tuple in stocks:
+            if isinstance(stock_tuple, tuple):
+                stock, score = stock_tuple
+                csv_rows.append({
+                    'date': target_date,
+                    'index': index,
+                    'code': stock,
+                    'composite_score': score
+                })
+    
+    # 按日期降序排列（新日期在上面）
+    csv_rows = sorted(csv_rows, key=lambda x: x['date'], reverse=True)
+    
+    # 转换为DataFrame
+    df_to_save = pd.DataFrame(csv_rows)
+    
+    # 定义文件路径
+    csv_file_path = folder / "picks.csv"
+    
+    # 检查文件是否存在，以决定是否需要写入表头
+    if not csv_file_path.exists():
+        # 文件不存在，写入数据并包含表头
+        df_to_save.to_csv(csv_file_path, index=False)
+    else:
+        # 文件存在，追加数据，不包含表头
+        df_to_save.to_csv(csv_file_path, index=False, header=False, mode='a')
+    
+    print(f"\n💾 结果已保存到: {csv_file_path}")
+
+def get_fridays(start_date: str, end_date: str) -> list[str]:
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+
+    #判断start是否是周五，如不是，则往后推，直到找到第一个周五
+    while start.weekday() != 4 and start <= end:
+        start += timedelta(days=1)
+    
+    fridays = []
+    while start <= end:
+        fridays.append(start.strftime("%Y-%m-%d"))
+        start += timedelta(days=7)
+
+    return fridays
 
 # ==================== 使用示例 ====================
 
@@ -262,10 +310,12 @@ if __name__ == "__main__":
         top_n=10
     )
     
+    all_stocks_list = index_components['CSI300'][0] + index_components['CSI500'][0] + index_components['CSI1000'][0]
+    fridays = get_fridays(start_date="2025-01-01", end_date=target_date)
+
     print(f"读取截至 {target_date} 的数据...")
 
     # 获取所有要查询的股票代码
-    all_stocks_list = index_components['CSI300'][0] + index_components['CSI500'][0] + index_components['CSI1000'][0]
     
     # 使用向量化操作一次性过滤所有需要的股票数据
     mask = ops.total_dataset['code'].isin(all_stocks_list)
@@ -283,53 +333,23 @@ if __name__ == "__main__":
             
         all_stocks_data[stock_code] = df
     
-    print(f" {target_date} 筛选开始...")
+    for trading_date in fridays:
+        print(f"{trading_date} 筛选开始...")
 
-    top_picks = screener.screen(all_stocks_data, pd.to_datetime(target_date))
+        top_picks = screener.screen(all_stocks_data, pd.to_datetime(trading_date))
     
+        save_results(base_dir, top_picks, trading_date)
+
     # --- 4. 输出结果 ---
-    print("\n" + "="*50)
-    print("🎯 最终选股结果 (供下周参考)")
-    print("="*50)
-    for index, stocks in top_picks.items():
-        print(f"\n{index} Top 10:")
-        for stock_tuple in stocks:
-            if isinstance(stock_tuple, tuple):  # 如果是(stock, score)元组
-                stock, score = stock_tuple
-                print(f"  - {stock} (Score: {score:.4f})")
-            else:  # 兼容旧的数据结构
-                print(f"  - {stock_tuple}")
+#    print("\n" + "="*50)
+#    print("🎯 最终选股结果 (供下周参考)")
+#    print("="*50)
+#    for index, stocks in top_picks.items():
+#        print(f"\n{index} Top 10:")
+#        for stock_tuple in stocks:
+#            if isinstance(stock_tuple, tuple):  # 如果是(stock, score)元组
+#                stock, score = stock_tuple
+#                print(f"  - {stock} (Score: {score:.4f})")
+#            else:  # 兼容旧的数据结构
+#                print(f"  - {stock_tuple}")
     
-    # --- 5. 保存结果到CSV文件 ---
-    import csv
-    # from pathlib import Path
-    
-    # 创建要保存的数据列表
-    csv_rows = []
-    for index, stocks in top_picks.items():
-        for stock_tuple in stocks:
-            if isinstance(stock_tuple, tuple):
-                stock, score = stock_tuple
-                csv_rows.append({
-                    'date': target_date,
-                    'index': index,
-                    'code': stock,
-                    'composite_score': score
-                })
-    
-    # 按日期降序排列（新日期在上面）
-    csv_rows = sorted(csv_rows, key=lambda x: x['date'], reverse=True)
-    
-    # 定义文件路径
-    csv_file_path = ops.base_dir / "picks.csv"
-    
-    # 写入CSV文件
-    with open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['date', 'index', 'code', 'composite_score']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
-        writer.writeheader()
-        for row in csv_rows:
-            writer.writerow(row)
-    
-    print(f"\n💾 结果已保存到: {csv_file_path}")

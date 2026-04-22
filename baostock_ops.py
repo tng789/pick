@@ -13,7 +13,11 @@ class BaostockOps:
     def __init__(self, home=Path(".").resolve()):
         self.home = Path(home)
         self.working_dir = self.home / "working"
+        Path(self.working_dir).mkdir(parents=True, exist_ok=True)
+
         self.base_dir = self.home / "local"
+        Path(self.base_dir).mkdir(parents=True, exist_ok=True)
+        
         self.very_beginning = "2020-01-01"
         self.calendar = self.load_calendar()
 

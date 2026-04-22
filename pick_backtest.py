@@ -29,7 +29,7 @@ if __name__ == "__main__":
             
         all_stocks_data[stock_code] = df
     
-    picks = pd.read_csv( "picks.csv")
+    picks = pd.read_csv( ops.base_dir / "picks.csv")
     days = picks['date'].unique().tolist()
 
     # 从picks读取某一天(date,比如2026-01-02)的csi300\csi500\csi1000的股票列表

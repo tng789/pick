@@ -1,10 +1,35 @@
 import pandas as pd
 # import numpy as np
 from datetime import datetime, timedelta
+import argparse
 
 from pathlib import Path
 
 from baostock_ops import BaostockOps
+
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description='股票筛选工具 - 从沪深300和中证500成分股中筛选股票')
+    
+    # 互斥参数组：today 和 history 二选一
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--today', action='store_true', help='运行当天选股（默认）')
+    group.add_argument('--history', action='store_true', help='运行历史回测')
+    
+    # 添加其他可能有用的参数
+    parser.add_argument('--start-date', type=str, help='回测开始日期 (YYYY-MM-DD)')
+    parser.add_argument('--end-date', type=str, help='回测结束日期 (YYYY-MM-DD)', 
+                       default=datetime.now().strftime('%Y-%m-%d'))
+    parser.add_argument('--top-n', type=int, default=10, help='每类选出的股票数量 (默认: 10)')
+    parser.add_argument('--lookback-days', type=int, default=120, help='计算因子所需的历史天数 (默认: 120)')
+    
+    args = parser.parse_args()
+    
+    # 如果没有指定任何模式，默认使用today
+    if not args.today and not args.history:
+        args.today = True
+    
+    return args
 
 def align_stock_to_calendar(df_stock, calendar):
     # 1. 确保 df_stock 的 index 是 DatetimeIndex
@@ -268,6 +293,11 @@ def get_fridays(start_date: str, end_date: str) -> list[str]:
 # ==================== 使用示例 ====================
 
 if __name__ == "__main__":
+    # 解析命令行参数
+    args = parse_arguments()
+    
+    print(f"运行模式: {'今日选股' if args.today else '历史回测'}")
+    
     # --- 1. 准备数据 (你需要替换成你的真实数据) ---
 
     ops = BaostockOps(home="./")
@@ -306,12 +336,11 @@ if __name__ == "__main__":
     screener = EasyProfitScreener(
         index_components=index_components,
         # benchmark_returns=benchmark_returns_csi500,
-        lookback_days=120,
-        top_n=10
+        lookback_days=args.lookback_days,
+        top_n=args.top_n
     )
     
     all_stocks_list = index_components['CSI300'][0] + index_components['CSI500'][0] + index_components['CSI1000'][0]
-    fridays = get_fridays(start_date="2025-01-01", end_date=target_date)
 
     print(f"读取截至 {target_date} 的数据...")
 
@@ -332,14 +361,29 @@ if __name__ == "__main__":
             df.index = pd.to_datetime(df.index)
             
         all_stocks_data[stock_code] = df
-    
-    for trading_date in fridays:
-        print(f"{trading_date} 筛选开始...")
 
-        top_picks = screener.screen(all_stocks_data, pd.to_datetime(trading_date))
-    
-        save_results(base_dir, top_picks, trading_date)
+    # 根据参数选择运行模式
+    if args.today:
+        # 仅运行当天选股
+        print(f"执行今日选股: {target_date}")
+        top_picks = screener.screen(all_stocks_data, pd.to_datetime(target_date))
+        save_results(base_dir, top_picks, target_date)
+    elif args.history:
+        # 运行历史回测
+        start_date = args.start_date or "2025-01-01"
+        end_date = args.end_date
+        fridays = get_fridays(start_date=start_date, end_date=end_date)
+        
+        print(f"执行历史回测，从 {start_date} 到 {end_date}")
+        for trading_date in fridays:
+            print(f"{trading_date} 筛选开始...")
 
+            top_picks = screener.screen(all_stocks_data, pd.to_datetime(trading_date))
+        
+            save_results(base_dir, top_picks, trading_date)
+    else:
+        pass
+    
     # --- 4. 输出结果 ---
 #    print("\n" + "="*50)
 #    print("🎯 最终选股结果 (供下周参考)")

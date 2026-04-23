@@ -10,8 +10,8 @@ class BaostockOps:
         "zz500": "sh.000905",
         "zz1000": "sh.000852"
     }
-    def __init__(self, home=Path(".").resolve()):
-        self.home = Path(home)
+    def __init__(self, home="."):
+        self.home = Path(home).resolve()
         self.working_dir = self.home / "working"
         Path(self.working_dir).mkdir(parents=True, exist_ok=True)
 
